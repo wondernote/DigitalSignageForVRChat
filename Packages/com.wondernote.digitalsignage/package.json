@@ -1,7 +1,7 @@
 {
   "name": "com.wondernote.digitalsignage",
   "displayName": "DigitalSignage for VRChat",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "unity": "2019.4",
   "description": "Digital signage system for displaying event information in VRChat",
   "author": {
@@ -13,6 +13,6 @@
     "com.vrchat.worlds": ">=3.4.2",
     "com.vrchat.base": ">=3.4.2"
   },
-  "url": "",
+  "url": "https://github.com/wondernote/DigitalSignageForVRChat/releases",
   "license": "WonderNote Digital Signage Custom License"
 }

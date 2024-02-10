@@ -3,6 +3,8 @@
     Properties
     {
         _MainTex ("Texture", 2D) = "white" {}
+        _CustomLightColor ("Light Color", Color) = (1, 1, 1, 1)
+        _CustomBgColor ("Background Color", Color) = (0.03, 0.03, 0.03, 1)
     }
     SubShader
     {
@@ -30,6 +32,8 @@
             };
 
             sampler2D _MainTex;
+            uniform float4 _CustomLightColor;
+            uniform float4 _CustomBgColor;
             float4 _MainTex_ST;
 
             v2f vert (appdata v)
@@ -42,11 +46,11 @@
 
             fixed4 frag (v2f i) : SV_Target
             {
-                fixed4 col = fixed4(0.03, 0.03, 0.03, 1);
+                fixed4 col = _CustomBgColor;
 
                 if (i.uv.x >= 0.0 && i.uv.x <= 1.0 && i.uv.y >= 0.875 && i.uv.y <= 1.0)
                 {
-                    return fixed4(1, 1, 1, 1);
+                    return _CustomLightColor;
                 }
                 return col;
             }

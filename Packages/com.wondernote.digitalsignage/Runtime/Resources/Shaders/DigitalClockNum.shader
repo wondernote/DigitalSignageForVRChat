@@ -10,6 +10,8 @@
         _Udon_BottomLeftSegment ("Bottom Left Segment", Float) = 0
         _Udon_TopLeftSegment ("Top Left Segment", Float) = 0
         _Udon_MiddleSegment ("Middle Segment", Float) = 0
+        _CustomLightColor ("Light Color", Color) = (1, 1, 1, 1)
+        _CustomBgColor ("Background Color", Color) = (0.03, 0.03, 0.03, 1)
     }
     SubShader
     {
@@ -37,6 +39,8 @@
             };
 
             sampler2D _MainTex;
+            uniform float4 _CustomLightColor;
+            uniform float4 _CustomBgColor;
             float4 _MainTex_ST;
 
             float _Udon_TopSegment;
@@ -57,35 +61,35 @@
 
             fixed4 frag (v2f i) : SV_Target
             {
-                fixed4 col = fixed4(0.03, 0.03, 0.03, 1);
+                fixed4 col = _CustomBgColor;
 
                 if (i.uv.x > 0.0 && i.uv.x < 0.125 && i.uv.y > 0.0 && i.uv.y < 0.5)
                 {
-                    col = _Udon_TopSegment > 0.5 ? fixed4(1, 1, 1, 1) : fixed4(0.03, 0.03, 0.03, 1);
+                    col = _Udon_TopSegment > 0.5 ? _CustomLightColor : _CustomBgColor;
                 }
                 else if (i.uv.x > 0.125 && i.uv.x < 0.25 && i.uv.y > 0.0 && i.uv.y < 0.5)
                 {
-                    col = _Udon_TopRightSegment > 0.5 ? fixed4(1, 1, 1, 1) : fixed4(0.03, 0.03, 0.03, 1);
+                    col = _Udon_TopRightSegment > 0.5 ? _CustomLightColor : _CustomBgColor;
                 }
                 else if (i.uv.x > 0.25 && i.uv.x < 0.375 && i.uv.y > 0.0 && i.uv.y < 0.5)
                 {
-                    col = _Udon_BottomRightSegment > 0.5 ? fixed4(1, 1, 1, 1) : fixed4(0.03, 0.03, 0.03, 1);
+                    col = _Udon_BottomRightSegment > 0.5 ? _CustomLightColor : _CustomBgColor;
                 }
                 else if (i.uv.x > 0.375 && i.uv.x < 0.5 && i.uv.y > 0.0 && i.uv.y < 0.5)
                 {
-                    col = _Udon_BottomSegment > 0.5 ? fixed4(1, 1, 1, 1) : fixed4(0.03, 0.03, 0.03, 1);
+                    col = _Udon_BottomSegment > 0.5 ? _CustomLightColor : _CustomBgColor;
                 }
                 else if (i.uv.x > 0.5 && i.uv.x < 0.625 && i.uv.y > 0.0 && i.uv.y < 0.5)
                 {
-                    col = _Udon_BottomLeftSegment > 0.5 ? fixed4(1, 1, 1, 1) : fixed4(0.03, 0.03, 0.03, 1);
+                    col = _Udon_BottomLeftSegment > 0.5 ? _CustomLightColor : _CustomBgColor;
                 }
                 else if (i.uv.x > 0.625 && i.uv.x < 0.75 && i.uv.y > 0.0 && i.uv.y < 0.5)
                 {
-                    col = _Udon_TopLeftSegment > 0.5 ? fixed4(1, 1, 1, 1) : fixed4(0.03, 0.03, 0.03, 1);
+                    col = _Udon_TopLeftSegment > 0.5 ? _CustomLightColor : _CustomBgColor;
                 }
                 else if (i.uv.x > 0.75 && i.uv.x < 0.875 && i.uv.y > 0.0 && i.uv.y < 0.5)
                 {
-                col = _Udon_MiddleSegment > 0.5 ? fixed4(1, 1, 1, 1) : fixed4(0.03, 0.03, 0.03, 1);
+                col = _Udon_MiddleSegment > 0.5 ? _CustomLightColor : _CustomBgColor;
                 }
                 return col;
             }

@@ -37,6 +37,19 @@ public class VRChatSignage : UdonSharpBehaviour
     public RawImage[] leftRightSplitImagesSec;
     public RawImage[] fourSplitImagesSec;
 
+    public CanvasGroup singleImagePriGroup;
+    public CanvasGroup leftRightSplitImagesPriGroup;
+    public CanvasGroup fourSplitImagesPriGroup;
+    public CanvasGroup singleImageSecGroup;
+    public CanvasGroup leftRightSplitImagesSecGroup;
+    public CanvasGroup fourSplitImagesSecGroup;
+
+    private CanvasGroup currentActiveGroup;
+    private CanvasGroup nextActiveGroup;
+    private float fadeDuration = 1.0f;
+    private float fadeTimer;
+    private bool isFading;
+
     DataList imgIdentifiersList = new DataList();
     DataList durationList = new DataList();
     DataList patternList = new DataList();
@@ -73,12 +86,12 @@ public class VRChatSignage : UdonSharpBehaviour
 
     private void DisableAllImages()
     {
-        singleImagePri.gameObject.SetActive(false);
-        foreach (var img in leftRightSplitImagesPri) img.gameObject.SetActive(false);
-        foreach (var img in fourSplitImagesPri) img.gameObject.SetActive(false);
-        singleImageSec.gameObject.SetActive(false);
-        foreach (var img in leftRightSplitImagesSec) img.gameObject.SetActive(false);
-        foreach (var img in fourSplitImagesSec) img.gameObject.SetActive(false);
+        singleImagePriGroup.gameObject.SetActive(false);
+        leftRightSplitImagesPriGroup.gameObject.SetActive(false);
+        fourSplitImagesPriGroup.gameObject.SetActive(false);
+        singleImageSecGroup.gameObject.SetActive(false);
+        leftRightSplitImagesSecGroup.gameObject.SetActive(false);
+        fourSplitImagesSecGroup.gameObject.SetActive(false);
     }
 
     private void ResetRawImages()
@@ -130,7 +143,8 @@ public class VRChatSignage : UdonSharpBehaviour
     private void ShowErrorImage()
     {
         singleImagePri.texture = fetchErrorImage;
-        singleImagePri.gameObject.SetActive(true);
+        singleImagePriGroup.alpha = 1.0f;
+        singleImagePriGroup.gameObject.SetActive(true);
     }
 
     private void InitializeValues()
@@ -143,6 +157,9 @@ public class VRChatSignage : UdonSharpBehaviour
 
         downloadingImgIndex = 0;
         downloadedImageCount = 0;
+
+        fadeTimer = 0.0f;
+        isFading = false;
     }
 
     private bool ParseJson(string jsonResponse)
@@ -426,32 +443,6 @@ public class VRChatSignage : UdonSharpBehaviour
         }
     }
 
-    private void ActivateAppropriateRawImage(int index)
-    {
-        string currentPattern = TryGetPattern(index);
-        string rawImgAssignment = rawImgAssignmentList[index].ToString();
-
-        DisableAllImages();
-
-        bool isActivePri = rawImgAssignment == "Pri";
-        bool isActiveSec = rawImgAssignment == "Sec";
-
-        switch (currentPattern) {
-            case "single":
-                if (isActivePri) singleImagePri.gameObject.SetActive(true);
-                if (isActiveSec) singleImageSec.gameObject.SetActive(true);
-                break;
-            case "left_right_split":
-                if (isActivePri) foreach (var img in leftRightSplitImagesPri) img.gameObject.SetActive(true);
-                if (isActiveSec) foreach (var img in leftRightSplitImagesSec) img.gameObject.SetActive(true);
-                break;
-            case "four_split":
-                if (isActivePri) foreach (var img in fourSplitImagesPri) img.gameObject.SetActive(true);
-                if (isActiveSec) foreach (var img in fourSplitImagesSec) img.gameObject.SetActive(true);
-                break;
-        }
-    }
-
     private void Update()
     {
         timeSinceLastApiCall += Time.deltaTime;
@@ -475,6 +466,56 @@ public class VRChatSignage : UdonSharpBehaviour
                 ActivateAppropriateRawImage(currentDisplayedIndex);
                 timeSinceLastImageDisplay = 0f;
             }
+        }
+
+        if (isFading)
+        {
+            fadeTimer += Time.deltaTime;
+            float alpha = Mathf.Clamp01(fadeTimer / fadeDuration);
+
+            currentActiveGroup.alpha = 1 - alpha;
+            nextActiveGroup.alpha = alpha;
+
+            if (fadeTimer >= fadeDuration)
+            {
+                isFading = false;
+                fadeTimer = 0.0f;
+                currentActiveGroup.gameObject.SetActive(false);
+                currentActiveGroup = nextActiveGroup;
+            }
+        }
+    }
+
+    private void ActivateAppropriateRawImage(int index)
+    {
+        string currentPattern = TryGetPattern(index);
+        string rawImgAssignment = rawImgAssignmentList[index].ToString();
+
+        bool isActivePri = rawImgAssignment == "Pri";
+        bool isActiveSec = rawImgAssignment == "Sec";
+
+        switch (currentPattern) {
+                case "single":
+                    if (isActivePri) nextActiveGroup = singleImagePriGroup;
+                    if (isActiveSec) nextActiveGroup = singleImageSecGroup;
+                    break;
+                case "left_right_split":
+                    if (isActivePri) nextActiveGroup = leftRightSplitImagesPriGroup;
+                    if (isActiveSec) nextActiveGroup = leftRightSplitImagesSecGroup;
+                    break;
+                case "four_split":
+                    if (isActivePri) nextActiveGroup = fourSplitImagesPriGroup;
+                    if (isActiveSec) nextActiveGroup = fourSplitImagesSecGroup;
+                    break;
+            }
+
+        if (index == 0) {
+            nextActiveGroup.alpha = 1.0f;
+            nextActiveGroup.gameObject.SetActive(true);
+            currentActiveGroup = nextActiveGroup;
+        } else {
+            nextActiveGroup.gameObject.SetActive(true);
+            isFading = true;
         }
     }
 }
