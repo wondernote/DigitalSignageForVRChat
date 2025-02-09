@@ -68,9 +68,8 @@ jobs:
 
       # Upload the VPM Listing Website to GitHub Pages artifacts
       - name: Upload Pages Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-pages-artifact@v3
         with:
-          name: github-pages
           path: ${{ env.listPublishDirectory }}
 
       # Deploy the uploaded VPM Listing Website to GitHub Pages
