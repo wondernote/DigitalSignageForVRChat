@@ -11,38 +11,39 @@ using UnityEngine.UI;
 using VRC.SDK3.Components;
 using System;
 
+[UdonBehaviourSyncMode(BehaviourSyncMode.None)]
 public class VRChatSignage : UdonSharpBehaviour
 {
     [Header("API Settings")]
-    public VRCUrl apiUrlObject;
-    public VRCUrl[] predefinedUrls;
+    [SerializeField] private VRCUrl activeApiUrl;
+    [SerializeField] private VRCUrl[] pcImagesUrls;
+    [SerializeField] private VRCUrl[] androidImagesUrls;
+    private VRCUrl[] activeChunkImagesUrls;
+
     private float apiCallInterval = 6 * 60 * 60;
 
     private int currentDisplayedIndex;
-    private int preIndex;
     private float timeSinceLastApiCall = 0f;
     private float timeSinceLastImageDisplay;
 
     [Header("Display Settings")]
-    public Texture2D defaultHorizontalImage;
-    public Texture2D defaultVerticalImage;
-    public Texture2D wondernoteHorizontalImage;
-    public Texture2D wondernoteVerticalImage;
-    public Texture2D fetchErrorImage;
+    [SerializeField] private Texture2D defaultHorizontalImage;
+    [SerializeField] private Texture2D defaultVerticalImage;
+    [SerializeField] private Texture2D fetchErrorImage;
 
-    public RawImage singleImagePri;
-    public RawImage[] leftRightSplitImagesPri;
-    public RawImage[] fourSplitImagesPri;
-    public RawImage singleImageSec;
-    public RawImage[] leftRightSplitImagesSec;
-    public RawImage[] fourSplitImagesSec;
+    [SerializeField] private RawImage singleImagePri;
+    [SerializeField] private RawImage[] leftRightSplitImagesPri;
+    [SerializeField] private RawImage[] fourSplitImagesPri;
+    [SerializeField] private RawImage singleImageSec;
+    [SerializeField] private RawImage[] leftRightSplitImagesSec;
+    [SerializeField] private RawImage[] fourSplitImagesSec;
 
-    public CanvasGroup singleImagePriGroup;
-    public CanvasGroup leftRightSplitImagesPriGroup;
-    public CanvasGroup fourSplitImagesPriGroup;
-    public CanvasGroup singleImageSecGroup;
-    public CanvasGroup leftRightSplitImagesSecGroup;
-    public CanvasGroup fourSplitImagesSecGroup;
+    [SerializeField] private CanvasGroup singleImagePriGroup;
+    [SerializeField] private CanvasGroup leftRightSplitImagesPriGroup;
+    [SerializeField] private CanvasGroup fourSplitImagesPriGroup;
+    [SerializeField] private CanvasGroup singleImageSecGroup;
+    [SerializeField] private CanvasGroup leftRightSplitImagesSecGroup;
+    [SerializeField] private CanvasGroup fourSplitImagesSecGroup;
 
     private CanvasGroup currentActiveGroup;
     private CanvasGroup nextActiveGroup;
@@ -54,7 +55,6 @@ public class VRChatSignage : UdonSharpBehaviour
     DataList durationList = new DataList();
     DataList patternList = new DataList();
 
-    private DataList imagesToDownloadList = new DataList();
     private string[][] playlistUrls;
 
     DataList rawImgAssignmentList = new DataList();
@@ -62,18 +62,41 @@ public class VRChatSignage : UdonSharpBehaviour
 
     private int playlistIndexCount;
 
-    private VRCImageDownloader imgDownloader;
-    private Texture2D[] textureCache;
+    private TextureFormat textureFormat;
+    private bool isAndroid;
+    private bool isFirstImagesDownloaded = false;
+    private const int FRAME_PROCESS_LIMIT_MS = 3;
 
-    private bool hasDownloadStarted = false;
-    private int downloadingImgIndex;
-    private int downloadedImageCount;
-    private string[] individualIdentifiersByIndex;
+    private System.Diagnostics.Stopwatch splitImgsProcessTime = new System.Diagnostics.Stopwatch();
+    private System.Diagnostics.Stopwatch imgsJsonChunksParseProcessTime = new System.Diagnostics.Stopwatch();
+    private System.Diagnostics.Stopwatch imgsJsonParseProcessTime = new System.Diagnostics.Stopwatch();
+
+    private int chunkCount;
+    private int loadingChunkIndex = 0;
+    private string arrayContent_imgs;
+    private int splitStartIndex_imgs;
+    private int imgsJsonChunkIndex;
+    private int imgsJsonParseIndex;
+    private int groupIndex;
+
+    private DataList signageImagesList = new DataList();
+    private DataList globalGroups = new DataList();
+    private DataList imgsJsonChunksList = new DataList();
+    private DataList parsedChunksImgsList = new DataList();
+    private DataToken cachedJsonResultImgs;
 
     private void Start()
     {
-        imgDownloader = new VRCImageDownloader();
-        textureCache = new Texture2D[100];
+        #if UNITY_ANDROID
+            activeChunkImagesUrls = androidImagesUrls;
+            textureFormat = TextureFormat.ETC_RGB4Crunched;
+            isAndroid = true;
+        #else
+            activeChunkImagesUrls = pcImagesUrls;
+            textureFormat = TextureFormat.DXT1Crunched;
+            isAndroid = false;
+        #endif
+
         InitializeImages();
         FetchPlaylist();
     }
@@ -106,38 +129,47 @@ public class VRChatSignage : UdonSharpBehaviour
 
     private void FetchPlaylist()
     {
-        VRCStringDownloader.LoadUrl(apiUrlObject, this.GetComponent<UdonBehaviour>());
+        VRCStringDownloader.LoadUrl(activeApiUrl, this.GetComponent<UdonBehaviour>());
     }
 
     public override void OnStringLoadSuccess(IVRCStringDownload download)
     {
-        InitializeValues();
-
-        bool isJsonParsed = ParseJson(download.Result);
-        if (!isJsonParsed)
+        if (download.Url == activeApiUrl)
         {
-            ShowErrorImage();
-            return;
-        }
+            InitializeValues();
 
-        assignRawImgTypesByIndex();
-        playlistUrls = new string[playlistIndexCount][];
-        CreateImagesDownloadList();
-        ClearTextureCache();
+            bool isJsonParsed = ParseJson(download.Result);
+            if (!isJsonParsed)
+            {
+                ShowErrorImage();
+                return;
+            }
 
-        if (!hasDownloadStarted)
-        {
+            assignRawImgTypesByIndex();
+            playlistUrls = new string[playlistIndexCount][];
+            CreateImagesDownloadList();
+            signageImagesList.Clear();
+
             DownloadNextImage();
-            hasDownloadStarted = true;
+            ActivateAppropriateRawImage(0);
         }
-
-        ActivateAppropriateRawImage(0);
+        else
+        {
+            StartImgsJsonParsing(download.Result);
+        }
     }
 
-    public override void OnStringLoadError(IVRCStringDownload download)
+    public override void OnStringLoadError(IVRCStringDownload result)
     {
-        ShowErrorImage();
-        Debug.LogError("プレイリストの取得に失敗しました。");
+        if (result.Url == activeApiUrl)
+        {
+            ShowErrorImage();
+            Debug.LogError($"プレイリストの取得に失敗しました。 from {result.Url}: {result.ErrorCode} - {result.Error}");
+        }
+        else
+        {
+            Debug.LogError($"Error loading signage_images string from {result.Url}: {result.ErrorCode} - {result.Error}");
+        }
     }
 
     private void ShowErrorImage()
@@ -152,11 +184,6 @@ public class VRChatSignage : UdonSharpBehaviour
         timeSinceLastImageDisplay = 0f;
         playlistIndexCount = 0;
         currentDisplayedIndex = 0;
-        preIndex = 0;
-        imagesToDownloadList.Clear();
-
-        downloadingImgIndex = 0;
-        downloadedImageCount = 0;
 
         fadeTimer = 0.0f;
         isFading = false;
@@ -222,6 +249,34 @@ public class VRChatSignage : UdonSharpBehaviour
                 {
                     Debug.LogError("JSON dictionary does not contain a 'playlist' key or it's not of type DataList.");
                 }
+
+                int pcImagesChunkCountValue = 0;
+                DataToken pcImagesChunkCountToken;
+                if (result.DataDictionary.TryGetValue("pcImagesChunkCount", TokenType.Double, out pcImagesChunkCountToken))
+                {
+                    pcImagesChunkCountValue = (int)pcImagesChunkCountToken.Double;
+                }
+                else
+                {
+                    Debug.LogError("pcImagesChunkCountが見つからないか、数値型ではありません。");
+                }
+
+                int androidImagesChunkCountValue = 0;
+                DataToken androidImagesChunkCountToken;
+                if (result.DataDictionary.TryGetValue("androidImagesChunkCount", TokenType.Double, out androidImagesChunkCountToken))
+                {
+                    androidImagesChunkCountValue = (int)androidImagesChunkCountToken.Double;
+                }
+                else
+                {
+                    Debug.LogError("androidImagesChunkCountが見つからないか、数値型ではありません。");
+                }
+
+                if (isAndroid) {
+                    chunkCount = androidImagesChunkCountValue;
+                } else {
+                    chunkCount = pcImagesChunkCountValue;
+                }
             }
             else
             {
@@ -236,7 +291,7 @@ public class VRChatSignage : UdonSharpBehaviour
         }
     }
 
-    public void AddEventData(DataList imgIdentifiers, float duration, string pattern)
+    private void AddEventData(DataList imgIdentifiers, float duration, string pattern)
     {
         imgIdentifiersList.Add(imgIdentifiers);
         durationList.Add(duration);
@@ -278,6 +333,8 @@ public class VRChatSignage : UdonSharpBehaviour
 
     private void CreateImagesDownloadList()
     {
+        string[] individualIdentifiersByIndex;
+
         for (int i = 0; i < playlistIndexCount; i++)
         {
             DataToken identifierToken = TryGetImgIdentifiers(i)[0];
@@ -285,92 +342,258 @@ public class VRChatSignage : UdonSharpBehaviour
                 .Replace("[", "")
                 .Replace("]", "")
                 .Replace("\"", "");
+
             individualIdentifiersByIndex = processedString.Split(',');
 
             playlistUrls[i] = individualIdentifiersByIndex;
+        }
+    }
 
-            foreach (string imageIdentifier in individualIdentifiersByIndex)
+    private void DownloadNextImage()
+    {
+        if (loadingChunkIndex < chunkCount)
+        {
+            VRCUrl chunkImagesUrl = activeChunkImagesUrls[loadingChunkIndex];
+            VRCStringDownloader.LoadUrl(chunkImagesUrl, this.GetComponent<UdonBehaviour>());
+            return;
+        }
+
+        splitImgsProcessTime = null;
+        imgsJsonChunksParseProcessTime = null;
+        imgsJsonParseProcessTime = null;
+        activeChunkImagesUrls = null;
+        globalGroups.Clear();
+    }
+
+    private void StartImgsJsonParsing(string jsonResponse)
+    {
+        arrayContent_imgs = "";
+        splitStartIndex_imgs = 0;
+        imgsJsonChunkIndex = 0;
+        imgsJsonParseIndex = 0;
+
+        int start = jsonResponse.IndexOf('[');
+        int end = jsonResponse.LastIndexOf(']');
+        if (start >= 0 && end > start)
+        {
+            arrayContent_imgs = jsonResponse.Substring(start + 1, end - start - 1);
+            SplitImgsJsonChunksAsync();
+        }
+        else
+        {
+            Debug.LogError("Failed to find valid Images JSON array in response.");
+        }
+    }
+
+    public void SplitImgsJsonChunksAsync()
+    {
+        splitImgsProcessTime.Restart();
+
+        while (splitStartIndex_imgs < arrayContent_imgs.Length)
+        {
+            int nextComma = arrayContent_imgs.IndexOf("},", splitStartIndex_imgs);
+            bool isLastElement = nextComma == -1;
+
+            int endIndex = isLastElement ? arrayContent_imgs.Length : nextComma + 1;
+            string element = arrayContent_imgs.Substring(splitStartIndex_imgs, endIndex - splitStartIndex_imgs).Trim();
+
+            if (!element.StartsWith("{")) element = $"{{{element}";
+            if (!element.EndsWith("}")) element = $"{element}}}";
+
+            imgsJsonChunksList.Add(new DataToken(element));
+            splitStartIndex_imgs = endIndex + 1;
+
+            if (splitImgsProcessTime.ElapsedMilliseconds > FRAME_PROCESS_LIMIT_MS)
             {
-                string trimmedIdentifier = imageIdentifier.Trim();
-                if (!imagesToDownloadList.Contains(trimmedIdentifier))
+                SendCustomEventDelayedFrames(nameof(SplitImgsJsonChunksAsync), 1);
+                return;
+            }
+        }
+
+        ParseImgsJsonChunksAsync();
+    }
+
+    public void ParseImgsJsonChunksAsync()
+    {
+        imgsJsonChunksParseProcessTime.Restart();
+
+        while (imgsJsonChunkIndex < imgsJsonChunksList.Count)
+        {
+            string chunk = imgsJsonChunksList[imgsJsonChunkIndex].String;
+
+            if (VRCJson.TryDeserializeFromJson(chunk, out DataToken result))
+            {
+                parsedChunksImgsList.Add(result);
+            }
+            else
+            {
+                Debug.LogError($"Failed to parse Images chunk {imgsJsonChunkIndex}/{imgsJsonChunksList.Count}.");
+            }
+
+            imgsJsonChunkIndex++;
+
+            if (imgsJsonChunksParseProcessTime.ElapsedMilliseconds > FRAME_PROCESS_LIMIT_MS)
+            {
+                SendCustomEventDelayedFrames(nameof(ParseImgsJsonChunksAsync), 1);
+                return;
+            }
+        }
+
+        cachedJsonResultImgs = CombineChunksToCachedResult(parsedChunksImgsList);
+        ParseSignageImagesJson();
+    }
+
+    private DataToken CombineChunksToCachedResult(DataList chunksList)
+    {
+        var dataList = new DataList();
+        for (int i = 0; i < chunksList.Count; i++)
+        {
+            DataToken chunk = chunksList[i];
+            if (chunk.TokenType == TokenType.DataDictionary)
+            {
+                dataList.Add(chunk);
+            }
+            else
+            {
+                Debug.LogError($"Parsed chunk {i} is not a DataDictionary. Skipping...");
+            }
+        }
+        return new DataToken(dataList);
+    }
+
+    public void ParseSignageImagesJson()
+    {
+        imgsJsonParseProcessTime.Restart();
+
+        if (cachedJsonResultImgs.TokenType == TokenType.DataList)
+        {
+            while (imgsJsonParseIndex < cachedJsonResultImgs.DataList.Count)
+            {
+                groupIndex = 0;
+                DataToken partToken = cachedJsonResultImgs.DataList[imgsJsonParseIndex];
+                imgsJsonParseIndex++;
+
+                if (partToken.TokenType == TokenType.DataDictionary)
                 {
-                    imagesToDownloadList.Add(trimmedIdentifier);
-                    if (imagesToDownloadList.Count == 100)
+                    DataDictionary partDict = partToken.DataDictionary;
+                    string imageId = partDict["image_id"].String;
+
+                    string prefetch = partDict["base64SignageImage"].String;
+                    partDict["prefetchedB64"] = new DataToken(prefetch);
+                    partDict.Remove("base64SignageImage");
+
+                    bool foundGroup = false;
+                    while (groupIndex < globalGroups.Count)
                     {
-                        return;
+                        DataDictionary groupInfo = globalGroups[groupIndex].DataDictionary;
+                        string currentKey = groupInfo["image_id"].String;
+                        if (currentKey == imageId)
+                        {
+                            if (groupInfo["finalized"].String == "false")
+                            {
+                                groupInfo["parts"].DataList.Add(partToken);
+                            }
+                            foundGroup = true;
+                            break;
+                        }
+                        groupIndex++;
                     }
+
+                    if (!foundGroup)
+                    {
+                        DataDictionary newGroupInfo = new DataDictionary();
+                        DataList partList = new DataList();
+                        partList.Add(partToken);
+
+                        newGroupInfo.Add("image_id", new DataToken(imageId));
+                        newGroupInfo.Add("parts", new DataToken(partList));
+                        newGroupInfo.Add("finalized", new DataToken("false"));
+                        globalGroups.Add(new DataToken(newGroupInfo));
+                    }
+                }
+                else
+                {
+                    Debug.LogError("Element is not a DataDictionary.");
+                }
+
+                if (imgsJsonParseProcessTime.ElapsedMilliseconds > FRAME_PROCESS_LIMIT_MS)
+                {
+                    SendCustomEventDelayedFrames(nameof(ParseSignageImagesJson), 1);
+                    return;
                 }
             }
         }
-    }
+        MergeAndFinalizeImages();
 
-    private void ClearTextureCache()
-    {
-        for (int i = 0; i < textureCache.Length; i++)
+        cachedJsonResultImgs = default;
+        loadingChunkIndex++;
+
+        if (loadingChunkIndex == 1)
         {
-            textureCache[i] = null;
-        }
-    }
-
-    public void DownloadNextImage()
-    {
-        if (downloadingImgIndex < imagesToDownloadList.Count)
-        {
-            string imgIdentifier = imagesToDownloadList[downloadingImgIndex].ToString();
-            VRCUrl imageUrl = GetPredefinedUrl(imgIdentifier);
-
-            imgDownloader.DownloadImage(imageUrl, null, this.GetComponent<UdonBehaviour>(), null);
-            downloadingImgIndex++;
-            SendCustomEventDelayedSeconds(nameof(DownloadNextImage), 5.1f);
-        } else {
-            hasDownloadStarted = false;
-        }
-    }
-
-    private VRCUrl GetPredefinedUrl(string imgIdentifier)
-    {
-        string fullUrl = "https://wondernote.github.io/ds-images/" + imgIdentifier;
-        foreach (VRCUrl url in predefinedUrls)
-        {
-            if (url.Get() == fullUrl)
-            {
-                return url;
-            }
-        }
-        Debug.LogError("URL not found for identifier: " + imgIdentifier);
-        return null;
-    }
-
-    public override void OnImageLoadSuccess(IVRCImageDownload result)
-    {
-        string downloadedUrl = result.Url.ToString();
-        int lastSlashIndex = downloadedUrl.LastIndexOf('/');
-        string filename = downloadedUrl.Substring(lastSlashIndex + 1);
-        int cacheIndex = GetCacheIndexFromIdentifier(filename);
-        Texture2D downloadedTexture = result.Result;
-        textureCache[cacheIndex] = downloadedTexture;
-
-        if (downloadedImageCount == 0)
-        {
+            isFirstImagesDownloaded = true;
             AssignTexture(0);
         }
-        downloadedImageCount++;
+
+        imgsJsonChunksList.Clear();
+        parsedChunksImgsList.Clear();
+        DownloadNextImage();
     }
 
-    public override void OnImageLoadError(IVRCImageDownload result)
+    private void MergeAndFinalizeImages()
     {
-        Debug.LogError($"画像 {result.Url} のダウンロードに失敗しました。");
-    }
+        int groupIndex = 0;
 
-    private int GetCacheIndexFromIdentifier(string identifier)
-    {
-        int index = int.Parse(identifier.Replace("img", "").Replace(".jpg", "")) - 1;
-        return index;
-    }
+        while (groupIndex < globalGroups.Count)
+        {
+            DataToken groupToken = globalGroups[groupIndex];
+            if (groupToken.TokenType == TokenType.DataDictionary)
+            {
+                DataDictionary groupInfo = groupToken.DataDictionary;
 
-    private void OnDestroy()
-    {
-        imgDownloader.Dispose();
+                if (groupInfo["finalized"].String == "true")
+                {
+                    groupIndex++;
+                    continue;
+                }
+
+                DataList partsList = groupInfo["parts"].DataList;
+                string imageId = groupInfo["image_id"].String;
+
+                int maxSerial = 10;
+
+                if (partsList.Count == maxSerial)
+                {
+                    string combinedBase64 = "";
+                    int width = 0;
+                    int height = 0;
+
+                    int indexPart = 0;
+                    while (indexPart < partsList.Count)
+                    {
+                        DataDictionary dictP = partsList[indexPart].DataDictionary;
+                        combinedBase64 += dictP["prefetchedB64"].String;
+                        if (indexPart == 0)
+                        {
+                            width = (int)dictP["width"].Double;
+                            height = (int)dictP["height"].Double;
+                        }
+                        indexPart++;
+                    }
+
+                    DataDictionary newImageDict = new DataDictionary();
+                    newImageDict.Add("image_id", new DataToken(imageId));
+                    newImageDict.Add("width", new DataToken(width));
+                    newImageDict.Add("height", new DataToken(height));
+                    newImageDict.Add("base64SignageImage", new DataToken(combinedBase64));
+
+                    signageImagesList.Add(new DataToken(newImageDict));
+
+                    groupInfo["finalized"] = new DataToken("true");
+                }
+            }
+
+            groupIndex++;
+        }
     }
 
     private void AssignTexture(int index)
@@ -421,16 +644,14 @@ public class VRChatSignage : UdonSharpBehaviour
 
     private void AssignTextureToDisplay(RawImage display, string[] imgIdentifiers)
     {
-        int cacheIndex = GetCacheIndexFromIdentifier(imgIdentifiers[0]);
-        display.texture = textureCache[cacheIndex] ?? wondernoteHorizontalImage;
+        SetSignageImage(imgIdentifiers[0], display);
     }
 
     private void AssignTextureToLeftRightSplitDisplay(RawImage[] displays, string[] imgIdentifiers)
     {
         for (int i = 0; i < displays.Length; i++)
         {
-            int cacheIndex = GetCacheIndexFromIdentifier(imgIdentifiers[i]);
-            displays[i].texture = textureCache[cacheIndex] ?? wondernoteVerticalImage;
+            SetSignageImage(imgIdentifiers[i], displays[i]);
         }
     }
 
@@ -438,8 +659,40 @@ public class VRChatSignage : UdonSharpBehaviour
     {
         for (int i = 0; i < displays.Length; i++)
         {
-            int cacheIndex = GetCacheIndexFromIdentifier(imgIdentifiers[i]);
-            displays[i].texture = textureCache[cacheIndex] ?? wondernoteHorizontalImage;
+            SetSignageImage(imgIdentifiers[i], displays[i]);
+        }
+    }
+
+    private void SetSignageImage(string identifier, RawImage rawImage)
+    {
+        for (int i = 0; i < signageImagesList.Count; i++)
+        {
+            var signageImgsDataDictionary = signageImagesList[i];
+            if (signageImgsDataDictionary.TokenType == TokenType.DataDictionary)
+            {
+                var signageImgsDict = signageImgsDataDictionary.DataDictionary;
+                if (signageImgsDict["image_id"].String == identifier)
+                {
+                    string base64SignageImage = signageImgsDict["base64SignageImage"].String;
+                    int signageImageWidth = (int)signageImgsDict["width"].Double;
+                    int signageImageHeight = (int)signageImgsDict["height"].Double;
+
+                    byte[] imageBytes = Convert.FromBase64String(base64SignageImage);
+                    Texture2D newTexture = new Texture2D(signageImageWidth, signageImageHeight, textureFormat, true, false);
+                    newTexture.LoadRawTextureData(imageBytes);
+                    newTexture.Apply();
+
+                    rawImage.texture = newTexture;
+
+                    rawImage.uvRect = new Rect(0, 0, 1, 1);
+                    rawImage.uvRect = new Rect(0, 1, 1, -1);
+                    return;
+                }
+            }
+            else
+            {
+                Debug.LogError("An element in signageImgsDataDictionary is not a DataDictionary.");
+            }
         }
     }
 
@@ -454,13 +707,12 @@ public class VRChatSignage : UdonSharpBehaviour
             return;
         }
 
-        if (currentDisplayedIndex < playlistIndexCount)
+        if ((currentDisplayedIndex < playlistIndexCount) && isFirstImagesDownloaded)
         {
             timeSinceLastImageDisplay += Time.deltaTime;
             float currentDuration = TryGetDuration(currentDisplayedIndex);
             if (timeSinceLastImageDisplay >= currentDuration)
             {
-                preIndex = currentDisplayedIndex;
                 currentDisplayedIndex = (currentDisplayedIndex + 1) % playlistIndexCount;
                 AssignTexture(currentDisplayedIndex);
                 ActivateAppropriateRawImage(currentDisplayedIndex);

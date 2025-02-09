@@ -5,6 +5,7 @@ using VRC.SDKBase;
 using VRC.Udon;
 using System;
 
+[UdonBehaviourSyncMode(BehaviourSyncMode.None)]
 public class DigitalClock : UdonSharpBehaviour
 {
     public Material yearMaterial1;
