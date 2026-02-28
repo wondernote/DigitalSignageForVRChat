@@ -3,3 +3,10 @@
 # 自分のパッケージだけ追跡する（中身まで）
 !com.wondernote.digitalsignage/
 !com.wondernote.digitalsignage/**
+
+# VCC が勝手に足す行（先に書いておく＝差分が出なくなる）
+!com.vrchat.core.*/
+
+# ただし core 系の中身は Git では追跡しない（Resolve で展開される依存本体）
+com.vrchat.core.*/
+com.vrchat.core.*/**
