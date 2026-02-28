@@ -1,14 +1,5 @@
 /*/
-!com.vrchat.core.*
-
-# Change this to match your new package name
-!com.wondernote.digitalsignage
-!com.vrchat.core.*/
 
 # 自分のパッケージだけ追跡する（中身まで）
 !com.wondernote.digitalsignage/
 !com.wondernote.digitalsignage/**
-
-# ただし VRChat core 系（Resolveで生成される依存本体）は Git では追跡しない
-com.vrchat.core.*/
-com.vrchat.core.*/**
