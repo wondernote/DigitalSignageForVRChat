@@ -1,0 +1,20 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+
+[Packages/vpm-manifest.json]
+end_of_line = crlf
+insert_final_newline = false
+
+[Packages/manifest.json]
+end_of_line = crlf
+
+[Packages/packages-lock.json]
+end_of_line = crlf
+
+[Packages/.gitignore]
+end_of_line = crlf
+insert_final_newline = true

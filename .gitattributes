@@ -1,0 +1,8 @@
+# 既定：テキストはLFで正規化
+* text=auto eol=lf
+
+# VCC/Unityが触りがちなファイルはCRLFを正にする（Windows前提でノイズを止める）
+Packages/vpm-manifest.json   text eol=crlf
+Packages/manifest.json       text eol=crlf
+Packages/packages-lock.json  text eol=crlf
+Packages/.gitignore          text eol=crlf
